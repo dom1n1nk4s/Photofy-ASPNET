@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
-using Photofy_ASPNET_1.Models;
+using Microsoft.EntityFrameworkCore;
+using Photofy.Models;
 
 namespace Photofy.Hubs
 {
@@ -13,17 +15,25 @@ namespace Photofy.Hubs
         {
             this.context = context;
         }
-        public string Test()
+        public List<User> Test()
         {
-            Console.WriteLine("Test");
-            return "Hello World";
+            return new List<User> { new User { Name = "a", ConnectionId = "1", IsReady = false }, new User { Name = "b", ConnectionId = "2", IsReady = true } };
         }
         public async Task<string> NewUser(string name)
         {
+            User usr;
+            string lobbyId;
+            do
+            {
+                lobbyId = GenerateLobbyId();
+                usr = context.Users.AsNoTracking().FirstOrDefault(u => u.LobbyId == lobbyId);
+            } while (usr != null);
+
             var user = new User
             {
                 Name = name,
-                LobbyId = GenerateLobbyId(), // need to make sure its unique
+                ConnectionId = Context.ConnectionId,
+                LobbyId = lobbyId,
             };
             await context.Users.AddAsync(user);
             var result = await context.SaveChangesAsync();
@@ -32,24 +42,86 @@ namespace Photofy.Hubs
         }
 
 
-        public async Task JoinLobby(Guid userId, string lobbyId)
+        public async Task<List<User>> JoinLobby(string lobbyId)
         {
-            var user = context.Users.FirstOrDefault(u => u.Id == userId);
-            if (user == null) throw new HubException("No such user found");
-            var userToJoin = context.Users.FirstOrDefault(u => u.LobbyId == lobbyId);
-            if (userToJoin == null) throw new HubException("No such lobby found");
+            var user = context.Users.FirstOrDefault(u => u.ConnectionId == Context.ConnectionId);
+            if (user == null) throw new HubException("Your user is not found. Please restart.");
+            var usersToJoin = context.Users.AsNoTracking().Where(u => u.LobbyId == lobbyId);
+            if (!usersToJoin.Any()) throw new HubException("No such lobby found");
             user.LobbyId = lobbyId;
 
             var result = await context.SaveChangesAsync();
             if (result == 0) throw new HubException("Error saving database");
+
+            var usersToCall = context.Users.AsNoTracking().Where(u => u.LobbyId == user.LobbyId && u.ConnectionId != user.ConnectionId);
+            if (usersToCall.Any())
+                await Clients.Clients(usersToCall.Select(u => u.ConnectionId)).MemberDisconnected(user.ConnectionId);
+
+            return usersToJoin.ToList();
+        }
+        public async Task ToggleReady()
+        {
+            var user = context.Users.FirstOrDefault(u => u.ConnectionId == Context.ConnectionId);
+            if (user == null) throw new HubException("Your user is not found. Please restart.");
+            user.IsReady = !user.IsReady;
+            var result = await context.SaveChangesAsync();
+            if (result == 0) throw new HubException("Error saving database");
+
+
+            var usersToJoin = context.Users.AsNoTracking().Where(u => u.LobbyId == user.LobbyId && u.ConnectionId != user.ConnectionId);
+
+            await Clients.Clients(usersToJoin.Select(u => u.ConnectionId)).MemberToggleReady(user.ConnectionId);
+
+            // check if all ready
+            usersToJoin.Append(user);
+            foreach (User u in usersToJoin)
+            {
+                if (!u.IsReady) return;
+            }
+            await Clients.Clients(usersToJoin.Select(u => u.ConnectionId)).StartImageActivity();
         }
 
+        public async Task SendImage(string image)
+        {
+            var user = context.Users.FirstOrDefault(u => u.ConnectionId == Context.ConnectionId);
+            if (user == null) throw new HubException("Your user is not found. Please restart.");
+            user.Image = image;
+            user.SentImage = true;
+            var result = await context.SaveChangesAsync();
+            if (result == 0) throw new HubException("Error saving database");
+
+            var usersToCall = context.Users.AsNoTracking().Where(u => u.LobbyId == user.LobbyId);
+
+            foreach (User u in usersToCall)
+            {
+                if (!u.SentImage) return;
+            }
+            await Clients.Clients(usersToCall.Select(u => u.ConnectionId)).StartGame(usersToCall.Select(u => u.Image).ToList());
+
+        }
         public override async Task OnConnectedAsync()
         {
-            Console.WriteLine("Connected");
+            Console.WriteLine($"Connected {Context.ConnectionId}");
+
             await base.OnConnectedAsync();
         }
 
+        public override async Task OnDisconnectedAsync(Exception exception)
+        {
+            var usr = context.Users.FirstOrDefault(u => u.ConnectionId == Context.ConnectionId);
+            if (usr != null)
+            {
+                var usersToCall = context.Users.AsNoTracking().Where(u => u.LobbyId == usr.LobbyId && u.ConnectionId != usr.ConnectionId);
+                if (usersToCall.Any())
+                    await Clients.Clients(usersToCall.Select(u => u.ConnectionId)).MemberDisconnected(usr.ConnectionId);
+
+                context.Users.Remove(usr);
+                Console.WriteLine($"Removed ID {Context.ConnectionId} from database");
+                await context.SaveChangesAsync();
+            }
+            else Console.Write($"Failed to remove ID {Context.ConnectionId}");
+            await base.OnDisconnectedAsync(exception);
+        }
 
 
 

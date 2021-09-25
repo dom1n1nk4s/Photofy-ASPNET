@@ -1,7 +1,7 @@
-namespace Photofy_ASPNET_1.Models
+namespace Photofy.Models
 {
     public class Lobby
     {
-        
+
     }
 }

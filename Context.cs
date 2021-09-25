@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Photofy_ASPNET_1.Models;
+using Photofy.Models;
 
 namespace Photofy
 {
@@ -8,7 +8,12 @@ namespace Photofy
         public Context(DbContextOptions<Context> options) : base(options)
         {
         }
-        public DbSet<User> Users {get;set;}
-        public DbSet<Lobby> Lobbies {get;set;}
+        public DbSet<User> Users { get; set; }
+        // public DbSet<Lobby> Lobbies { get; set; }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<User>().HasKey(u => u.ConnectionId);
+        }
+
     }
 }
