@@ -10,5 +10,6 @@ namespace Photofy.Models
         public bool IsReady { get; set; }
         public string Image { get; set; }
         public bool SentImage { get; set; }
+        public string Choices { get; set; }
     }
 }

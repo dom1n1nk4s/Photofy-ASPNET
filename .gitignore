@@ -52,6 +52,7 @@ TestResults/
 ######################
 *.log
 *.sqlite
+Migrations/
 # OS generated files #
 ######################
 .DS_Store?
@@ -73,3 +74,4 @@ _[Ss]cripts
 *.nupkg
 *.ncrunchsolution
 *.dot[Cc]over
+Migrations/ContextModelSnapshot.cs
