@@ -7,6 +7,7 @@ namespace Photofy
     {
         public Context(DbContextOptions<Context> options) : base(options)
         {
+            Database.EnsureCreated();
         }
         public DbSet<User> Users { get; set; }
         // public DbSet<Lobby> Lobbies { get; set; }
